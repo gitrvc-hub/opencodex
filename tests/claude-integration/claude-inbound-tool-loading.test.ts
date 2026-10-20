@@ -26,7 +26,7 @@ const translate = (raw: ReturnType<typeof request>, config: any = enabled) => an
 describe("append-only discovery on an explicitly selected route", () => {
   test("invalid opt-in settings are rejected on write and ignored by direct translation", () => {
     const raw = request(["lookup"], search("call_search", ["lookup"]));
-    for (const value of [true, "gateway/gpt-*", {}, [model, 1], [""], ["*"], ["gateway/g*t"], [" gateway/gpt-test"]]) {
+    for (const value of [true, "gateway/gpt-*", {}, [model, 1], [""], ["*"], ["gateway/g*t"], [" gateway/gpt-test"], ["gateway/gpt-test\n"], ["gateway/gpt-*\r\n"]]) {
       const config = { appendOnlyToolLoadingModels: value };
       expect(configSchema.safeParse({ ...configBase, claudeCode: config }).success).toBe(false);
       expect(translate(raw, config)).toEqual(translate(raw, {}));
