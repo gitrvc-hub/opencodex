@@ -67,9 +67,15 @@ describe("append-only discovery on an explicitly selected route", () => {
 
   test("the real Responses parser retains the same effective callable catalog", () => {
     const raw = request(["lookup"], search("call_search", ["lookup"]));
+    raw.tools.push(tool("eager"));
     const ordinary = parseRequest(translate(raw, {}));
     const appended = parseRequest(translate(raw));
-    expect(appended.tools).toEqual(ordinary.tools);
+    const ordinaryTools = ordinary.context.tools ?? [];
+    const appendedTools = appended.context.tools ?? [];
+    expect(appendedTools.map(t => t.name).sort()).toEqual(["ToolSearch", "eager", "lookup"]);
+    expect(appendedTools.map(({ loadedFromToolSearch, ...definition }) => definition).sort((a, b) => a.name.localeCompare(b.name)))
+      .toEqual([...ordinaryTools].sort((a, b) => a.name.localeCompare(b.name)));
+    expect(appendedTools.find(t => t.name === "lookup")?.loadedFromToolSearch).toBe(true);
     expect(appended._rawBody).toMatchObject({ input: expect.arrayContaining([expect.objectContaining({ type: "additional_tools" })]) });
   });
 
