@@ -18,6 +18,7 @@ import { AnthropicRequestError, isRec, type Rec } from "./inbound-records";
 import { resolveInboundModel, effortForThinkingBudget, effortFromOutputConfig, formatFromOutputConfig } from "./inbound-model-options";
 import { systemToInstructions, toolsToResponses, toolChoiceToResponses } from "./inbound-content-options";
 import { stabilizeClaudeInstructionsForPromptCache } from "./inbound-cache-stabilize";
+import { appendLoadedToolDefinitions, appendOnlyToolLoadingMatches } from "./inbound-tool-loading";
 import { decodeReasoningEnvelope, encodeReasoningEnvelope, OCX_REASONING_PREFIX } from "../responses/reasoning-envelope";
 import { inlineDocumentMarker } from "../responses/inline-document";
 import { createTranslatorBudget, type TranslatorBudget } from "../lib/translator-budget";
@@ -491,7 +492,9 @@ function translateAnthropicRequest(
   const tools = toolsToResponses(raw.tools);
   if (tools) body.tools = tools;
   const cacheKeySource = applyAnthropicSettings(raw, body, system.cacheSystem, tools);
-  return { body, cacheKeySource, nativeReasoningReplay };
+  const appendOnly = cacheKeySource === "metadata"
+    && appendOnlyToolLoadingMatches(cc?.appendOnlyToolLoadingModels, body.model as string);
+  return { body: appendOnly ? appendLoadedToolDefinitions(body, raw) : body, cacheKeySource, nativeReasoningReplay };
 }
 
 function assertAnthropicRequestShape(raw: unknown): asserts raw is Rec & { model: string; messages: unknown[] } {

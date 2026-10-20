@@ -388,6 +388,27 @@ Instruction notice extraction scans fence ranges once and walks original lines b
 a decreasing cursor. It accepts exactly one ASCII space inside the token notice, preserves
 unmatched prefix bytes, and does not repeatedly scan or copy shrinking prompt prefixes.
 
+## Opt-in append-only Claude tool discovery
+
+`src/claude/inbound-tool-loading.ts` reconstructs successful client `ToolSearch` discovery from
+structured `tool_reference` results. For routes explicitly selected by
+`claudeCode.appendOnlyToolLoadingModels`, and only with a metadata-derived cache key,
+`src/claude/inbound.ts` moves currently declared deferred functions from the initial catalog
+into developer-role `additional_tools` immediately after the matching result. Replay preserves
+that position; no session cache or new inferred capability is created. Eager tools and tools
+used before discovery remain in the initial catalog. Missing/revoked definitions, error results,
+plain-text markers and unrelated calls cannot authorize additions; ambiguous IDs/catalogs keep
+the original translation. Schemas and strictness remain unchanged. Compaction, schema changes
+and revocation may legitimately invalidate the prefix.
+
+The list defaults to absent/off, accepts provider-qualified exact routes or a single trailing
+prefix wildcard, and must name only direct Responses destinations verified to support
+`additional_tools`, not combos or policies with unsupported fallback legs. Native passthrough
+and compatibility-enforcement admission are unchanged. Malformed lists are rejected on write;
+load salvage drops only this optional setting, preserving providers and other client settings.
+`tests/claude-integration/claude-inbound-tool-loading.test.ts` covers the real Responses parser,
+prefix stability, authorization boundaries and configuration salvage.
+
 ## Claude skill marker path bound
 
 `src/claude/inbound.ts` examines at most 4,097 characters after the skill base-directory

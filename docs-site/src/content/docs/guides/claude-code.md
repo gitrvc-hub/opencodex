@@ -1167,6 +1167,38 @@ reuse still requires stable session identity and upstream cache availability.
 Changes to earlier instructions or tools, and conversation compaction, can still
 affect cache hits; preserving reminder order alone does not guarantee reuse.
 
+### Preserve cache prefixes when client tools load
+
+For a **direct Responses route verified to accept `additional_tools`**, an opt-in can preserve
+client ToolSearch loading history instead of adding each discovered function to the initial
+catalog:
+
+```json
+{
+  "claudeCode": {
+    "appendOnlyToolLoadingModels": ["my-gateway/gpt-example"]
+  }
+}
+```
+
+Selectors match resolved `provider/model` names, not picker aliases. A single trailing wildcard
+such as `my-gateway/gpt-*` selects a verified model family; a global `*` is not accepted. The
+list defaults to off, with a maximum of 128 entries of 512 characters each. Do not select combos
+or policies whose fallback destinations lack this Responses capability.
+
+The optimization needs a string `metadata.user_id` and successful structured ToolSearch results.
+It moves only currently declared deferred function definitions to their first discovery position.
+It never grants tools from reference text or restores revoked definitions. Tools used before
+being discovered remain in the initial catalog. Schemas, strictness and call/result pairing are
+preserved. Missing metadata, absent/empty configuration, and native Anthropic passthrough keep
+existing behavior. Malformed configuration is rejected on write; load recovery disables only
+this optional setting rather than discarding providers.
+
+This is not server-side deferred-tool-search support and does not change compatibility-enforcement
+admission or turn on tool search in the client. It applies when the client already discovers tools.
+It does not guarantee cache hits: schema changes, revocations, model switches, compaction and
+upstream cache availability can still require a new prefix.
+
 ### Intercept token recovery
 
 The running authenticated proxy validates the current token for each new CONNECT request.

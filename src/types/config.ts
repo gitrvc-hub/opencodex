@@ -54,6 +54,14 @@ export interface OcxClaudeCodeConfig {
    * Default: false; only literal true enables it. Native passthrough is unchanged.
    */
   stabilizePromptCache?: boolean;
+  /**
+   * Opt-in resolved provider/model routes verified to accept Responses additional_tools.
+   * A single trailing '*' matches a provider-qualified prefix (for example 'gateway/gpt-*').
+   * Replays successful client ToolSearch discoveries in place without growing the initial
+   * catalog. Requires metadata.user_id. Absent/empty is off; native passthrough is unchanged.
+   * Select direct Responses routes only, not combos/policies with unsupported fallback legs.
+   */
+  appendOnlyToolLoadingModels?: string[];
   /** Opt-in translated Messages admission; unset keeps legacy behavior. Native passthrough is exempt. */
   compatibility?: "shadow" | "enforce";
   /** Kill switch for the /v1/messages inbound (GUI "Claude ON" toggle). Default: enabled. */
