@@ -1199,6 +1199,35 @@ admission or turn on tool search in the client. It applies when the client alrea
 It does not guarantee cache hits: schema changes, revocations, model switches, compaction and
 upstream cache availability can still require a new prefix.
 
+#### Claude models behind a gateway that also serves GPT
+
+`appendOnlyToolLoadingModels` cannot fix Claude models that are routed through a Responses
+gateway. Such a gateway can lift `additional_tools` back into Claude's initial `tools` array, and
+Claude caches tools before the system prompt, so the request that loads a tool still misses. For a
+key-authenticated gateway that also serves Anthropic Messages, send Claude models natively and keep
+the other models on Responses with `modelAdapters`:
+
+```json
+{
+  "protocols": { "rollout": { "managedMessagesNative": true } },
+  "providers": {
+    "my-gateway": {
+      "adapter": "anthropic",
+      "modelAdapters": { "gpt-example": "openai-responses" }
+    }
+  }
+}
+```
+
+List every non-Claude model the provider serves in `modelAdapters`; an unlisted one would be sent
+as Messages. Native Messages keep Claude Code's deferred tool definitions and `tool_reference`
+results in place, so loading a tool adds to the cached prefix rather than replacing it.
+`claudeCode.stabilizePromptCache` does not apply on that path and is not needed there; it still
+helps any Claude request that stays on the bridge. Combos, policies, pinned efforts, synthetic
+rows, the web-search sidecar and vision preprocessing keep requests on the bridge, as listed under
+[rollout switches](/guides/protocol-paths/#rollout-switches). Third-party compatible providers do
+not receive caller `anthropic-beta` values, so the gateway must accept these requests without them.
+
 ### Intercept token recovery
 
 The running authenticated proxy validates the current token for each new CONNECT request.

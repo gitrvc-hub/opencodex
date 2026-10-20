@@ -409,6 +409,12 @@ load salvage drops only this optional setting, preserving providers and other cl
 `tests/claude-integration/claude-inbound-tool-loading.test.ts` covers the real Responses parser,
 prefix stability, authorization boundaries and configuration salvage.
 
+This opt-in does not stabilize Claude models routed through a Responses gateway that lifts
+`additional_tools` into Claude's top-level tools. For those, the documented operator path is a
+provider with `adapter: "anthropic"`, per-model `modelAdapters` keeping non-Claude models on
+Responses, and `protocols.rollout.managedMessagesNative`; native Messages keep Claude Code's
+deferred definitions and `tool_reference` results unchanged. No code path changes for it.
+
 ## Claude skill marker path bound
 
 `src/claude/inbound.ts` examines at most 4,097 characters after the skill base-directory
