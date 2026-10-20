@@ -1183,8 +1183,9 @@ catalog:
 
 Selectors match resolved `provider/model` names, not picker aliases. A single trailing wildcard
 such as `my-gateway/gpt-*` selects a verified model family; a global `*` is not accepted. The
-list defaults to off, with a maximum of 128 entries of 512 characters each. Do not select combos
-or policies whose fallback destinations lack this Responses capability.
+list defaults to off, with a maximum of 128 entries of 512 characters each. Only a request whose
+final route is a direct Responses provider is rewritten; a combo or policy route keeps the original
+tool catalog even when selected, because its fallbacks may not keep the chronological placement.
 
 The optimization needs a string `metadata.user_id` and successful structured ToolSearch results.
 It moves only currently declared deferred function definitions to their first discovery position.

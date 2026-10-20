@@ -27,6 +27,7 @@ import {
   type MessagesDirectPlan,
 } from "./messages-antigravity-direct";
 import { AnthropicRequestError, callerCacheRetention, DesktopModelMappingUnavailableError, extractOcxEffortDirective, extractOcxRouteDirective, nativeAnthropicProjection, resolveInboundModel, type ClaudeCacheKeySource } from "../claude/inbound";
+import { appendLoadedToolDefinitions, appendOnlyToolLoadingMatches } from "../claude/inbound-tool-loading";
 import { nativeReasoningTag, type NativeReasoningOwner } from "../responses/reasoning-replay-cache";
 import { isKnownDesktop3pModelId, resolveDesktop3pAlias } from "../claude/desktop-3p";
 import { resolveAlias, claudeCodeNativeAlias, legacyAliasForNative } from "../claude/alias";
@@ -887,6 +888,13 @@ async function handleClaudeMessagesWithBudget(
     settledRoute = route;
     // Before any route-specific shaping, so a request that leaves the lane is shaped as the bridge's.
     if (directPlan && !messagesDirectPlanHolds(directPlan, route, anthropicBody as Rec, config)) directLeaveError = leaveDirectPlan();
+    // Only a settled, direct Responses route keeps the chronological additional_tools placement;
+    // a combo or policy can still pick a destination that flattens it into the initial catalog.
+    if (!directPlan && cacheKeySource === "metadata" && route.provider.adapter === "openai-responses"
+      && !route.combo && route.routeKind !== "combo" && route.routeKind !== "policy"
+      && appendOnlyToolLoadingMatches(cc?.appendOnlyToolLoadingModels, internalBody.model as string)) {
+      internalBody = appendLoadedToolDefinitions(internalBody, anthropicBody as Rec);
+    }
     if (directEncodersApply(config, route)) {
       clientEncoder = { protocol: "messages", stream, model: requestedModel, inputTokenFloor: claudeRequestTokenFloor() };
     }

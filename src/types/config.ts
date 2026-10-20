@@ -59,7 +59,7 @@ export interface OcxClaudeCodeConfig {
    * A single trailing '*' matches a provider-qualified prefix (for example 'gateway/gpt-*').
    * Replays successful client ToolSearch discoveries in place without growing the initial
    * catalog. Requires metadata.user_id. Absent/empty is off; native passthrough is unchanged.
-   * Select direct Responses routes only, not combos/policies with unsupported fallback legs.
+   * Applies only after routing settles on a direct openai-responses route; combos and policies are skipped.
    */
   appendOnlyToolLoadingModels?: string[];
   /** Opt-in translated Messages admission; unset keeps legacy behavior. Native passthrough is exempt. */

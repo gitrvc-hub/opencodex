@@ -393,8 +393,10 @@ unmatched prefix bytes, and does not repeatedly scan or copy shrinking prompt pr
 `src/claude/inbound-tool-loading.ts` reconstructs successful client `ToolSearch` discovery from
 structured `tool_reference` results. For routes explicitly selected by
 `claudeCode.appendOnlyToolLoadingModels`, and only with a metadata-derived cache key,
-`src/claude/inbound.ts` moves currently declared deferred functions from the initial catalog
-into developer-role `additional_tools` immediately after the matching result. Replay preserves
+`src/server/claude-messages.ts` applies it after route settlement, only when the settled
+route's adapter is `openai-responses` and the route is not a combo or policy, moving currently
+declared deferred functions from the initial catalog into developer-role `additional_tools`
+immediately after the matching result. Replay preserves
 that position; no session cache or new inferred capability is created. Eager tools and tools
 used before discovery remain in the initial catalog. Missing/revoked definitions, error results,
 plain-text markers and unrelated calls cannot authorize additions; ambiguous IDs/catalogs keep
@@ -403,7 +405,8 @@ and revocation may legitimately invalidate the prefix.
 
 The list defaults to absent/off, accepts provider-qualified exact routes or a single trailing
 prefix wildcard, and must name only direct Responses destinations verified to support
-`additional_tools`, not combos or policies with unsupported fallback legs. Native passthrough
+`additional_tools`. A selected combo or policy route keeps the original catalog, because it can
+settle on a destination that flattens the item back into initial tools. Native passthrough
 and compatibility-enforcement admission are unchanged. Malformed lists are rejected on write;
 load salvage drops only this optional setting, preserving providers and other client settings.
 `tests/claude-integration/claude-inbound-tool-loading.test.ts` covers the real Responses parser,

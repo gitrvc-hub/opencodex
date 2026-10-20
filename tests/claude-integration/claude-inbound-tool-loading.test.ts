@@ -7,7 +7,8 @@ import type { OcxConfig } from "../../src/types";
 import { installIsolatedCodexHome, type IsolatedCodexHome } from "../helpers/isolated-codex-home";
 import { acquireOwnedSpendHome } from "../helpers/owned-spend-home";
 import { removeTreeWithRetry } from "../helpers/remove-tree";
-import { anthropicToResponsesBody } from "../../src/claude/inbound";
+import { anthropicToResponsesTranslation } from "../../src/claude/inbound";
+import { appendLoadedToolDefinitions, appendOnlyToolLoadingMatches } from "../../src/claude/inbound-tool-loading";
 import { parseRequest } from "../../src/responses/parser";
 import { configSchema } from "../../src/config/schema/config-schema";
 import { salvageConfigCandidate } from "../../src/config/salvage";
@@ -21,7 +22,13 @@ const search = (id: string, names: string[]) => [
   { role: "user", content: [{ type: "tool_result", tool_use_id: id, content: names.map(tool_name => ({ type: "tool_reference", tool_name })) }] },
 ];
 const request = (names: string[], messages: unknown[] = []) => ({ model, metadata: { user_id: "synthetic-cache-test" }, system: "Synthetic test instructions", tools: [tool("ToolSearch"), ...names.map(n => tool(n, true))], messages: [{ role: "user", content: "Use the available tools." }, ...messages], max_tokens: 100 });
-const translate = (raw: ReturnType<typeof request>, config: any = enabled) => anthropicToResponsesBody(raw, config) as any;
+// Mirrors the handler's gate for a settled direct Responses route; the HTTP tests below cover the
+// real routing decision, including the combo refusal.
+const translate = (raw: ReturnType<typeof request>, config: any = enabled) => {
+  const { body, cacheKeySource } = anthropicToResponsesTranslation(raw, config);
+  const selected = cacheKeySource === "metadata" && appendOnlyToolLoadingMatches(config?.appendOnlyToolLoadingModels, body.model as string);
+  return (selected ? appendLoadedToolDefinitions(body, raw as any) : body) as any;
+};
 
 describe("append-only discovery on an explicitly selected route", () => {
   test("invalid opt-in settings are rejected on write and ignored by direct translation", () => {
@@ -204,5 +211,30 @@ describe("append-only tools at the actual Messages HTTP boundary", () => {
     expect(captured[0].tools.map((t: any) => t.name)).toEqual(["ToolSearch"]);
     expect(captured[0].input.at(-1)).toMatchObject({ type: "additional_tools", role: "developer", tools: [{ name: "lookup" }] });
     expect(result.content).toContainEqual(expect.objectContaining({ type: "tool_use", name: "lookup", input: {} }));
+  });
+
+  test("a selected combo route keeps the original catalog even when its target is Responses", async () => {
+    const captured: any[] = [];
+    globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+      captured.push(JSON.parse(String(init?.body)));
+      return Response.json({ id: "resp_combo", object: "response", status: "completed",
+        output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: "ok" }] }],
+        usage: { input_tokens: 20, output_tokens: 5, total_tokens: 25 } });
+    }) as typeof fetch;
+    const config = {
+      ...configBase,
+      combos: { pick: { strategy: "failover", targets: [{ provider: "gateway", model: "gpt-test" }] } },
+      claudeCode: { appendOnlyToolLoadingModels: ["combo/pick"] },
+    } as unknown as OcxConfig;
+    const raw = { ...request(["lookup"], search("call_search", ["lookup"])), model: "combo/pick" };
+    const response = await handleClaudeMessages(new Request("http://localhost/v1/messages", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...raw, stream: false }),
+    }), config, { model: "", provider: "" });
+    await response.text();
+    expect(response.status).toBe(200);
+    expect(captured).toHaveLength(1);
+    expect(captured[0].tools.map((t: any) => t.name)).toEqual(["ToolSearch", "lookup"]);
+    expect(captured[0].input.some((x: any) => x.type === "additional_tools")).toBe(false);
   });
 });
