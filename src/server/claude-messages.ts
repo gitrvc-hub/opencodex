@@ -892,7 +892,7 @@ async function handleClaudeMessagesWithBudget(
     // a combo or policy can still pick a destination that flattens it into the initial catalog.
     if (!directPlan && cacheKeySource === "metadata" && route.provider.adapter === "openai-responses"
       && !route.combo && route.routeKind !== "combo" && route.routeKind !== "policy"
-      && appendOnlyToolLoadingMatches(cc?.appendOnlyToolLoadingModels, internalBody.model as string)) {
+      && appendOnlyToolLoadingMatches(cc?.appendOnlyToolLoadingModels, `${route.providerName}/${route.modelId}`)) {
       internalBody = appendLoadedToolDefinitions(internalBody, anthropicBody as Rec);
     }
     if (directEncodersApply(config, route)) {

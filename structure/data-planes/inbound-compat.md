@@ -394,11 +394,13 @@ unmatched prefix bytes, and does not repeatedly scan or copy shrinking prompt pr
 structured `tool_reference` results. For routes explicitly selected by
 `claudeCode.appendOnlyToolLoadingModels`, and only with a metadata-derived cache key,
 `src/server/claude-messages.ts` applies it after route settlement, only when the settled
-route's adapter is `openai-responses` and the route is not a combo or policy, moving currently
-declared deferred functions from the initial catalog into developer-role `additional_tools`
-immediately after the matching result. Replay preserves
-that position; no session cache or new inferred capability is created. Eager tools and tools
-used before discovery remain in the initial catalog. Missing/revoked definitions, error results,
+route's adapter is `openai-responses` and the route is not a combo or policy. Selectors match
+the settled provider/model identity, not the original alias or a redirected source. Currently
+declared unused deferred functions stay out of the initial catalog even before discovery;
+successful discovery places them into developer-role `additional_tools` immediately after the
+matching result. Replay preserves that position; no session cache or new inferred capability
+is created. Eager tools, tools used before discovery, and explicitly forced undiscovered tools
+remain in the initial catalog. Without an eager declared `ToolSearch`, translation is unchanged. Missing/revoked definitions, error results,
 plain-text markers and unrelated calls cannot authorize additions; ambiguous IDs/catalogs keep
 the original translation. Schemas and strictness remain unchanged. Compaction, schema changes
 and revocation may legitimately invalidate the prefix.

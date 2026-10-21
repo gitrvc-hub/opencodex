@@ -52,17 +52,25 @@ export function appendLoadedToolDefinitions(body: Rec, raw: Rec): Rec {
       }
     }
   }
-  if (loadAt.size === 0) return body;
+  // Discovery must remain callable; this optimization does not create a search capability.
+  if (!declared.has("ToolSearch") || deferred.has("ToolSearch")) return body;
 
-  // Do not remove a declaration unless exactly one translated result can carry it.
+  // An ambiguous translated result cannot carry a definition safely.
   const outputCounts = new Map<string, number>();
   for (const item of body.input) {
     if (isRec(item) && item.type === "function_call_output" && typeof item.call_id === "string") {
       outputCounts.set(item.call_id, (outputCounts.get(item.call_id) ?? 0) + 1);
     }
   }
-  for (const [name, id] of loadAt) if (outputCounts.get(id) !== 1) loadAt.delete(name);
-  if (loadAt.size === 0) return body;
+  for (const id of loadAt.values()) if (outputCounts.get(id) !== 1) return body;
+
+  const hidden = new Set([...deferred].filter(name => declared.has(name) && (!used.has(name) || loadAt.has(name))));
+  // Explicit forced-tool intent takes precedence over waiting for discovery.
+  const choice = raw.tool_choice;
+  if (isRec(choice) && choice.type === "tool" && typeof choice.name === "string" && !loadAt.has(choice.name)) {
+    hidden.delete(choice.name);
+  }
+  if (hidden.size === 0) return body;
 
   const additions = new Map<string, Rec[]>();
   for (const [name, id] of loadAt) {
@@ -79,7 +87,7 @@ export function appendLoadedToolDefinitions(body: Rec, raw: Rec): Rec {
   }
   return {
     ...body,
-    tools: body.tools.filter(tool => !isRec(tool) || typeof tool.name !== "string" || !loadAt.has(tool.name)),
+    tools: body.tools.filter(tool => !isRec(tool) || typeof tool.name !== "string" || !hidden.has(tool.name)),
     input,
   };
 }

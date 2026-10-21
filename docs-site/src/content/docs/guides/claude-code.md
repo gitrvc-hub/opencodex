@@ -1187,10 +1187,11 @@ list defaults to off, with a maximum of 128 entries of 512 characters each. Only
 final route is a direct Responses provider is rewritten; a combo or policy route keeps the original
 tool catalog even when selected, because its fallbacks may not keep the chronological placement.
 
-The optimization needs a string `metadata.user_id` and successful structured ToolSearch results.
-It moves only currently declared deferred function definitions to their first discovery position.
+The optimization needs a string `metadata.user_id` and an eager declared `ToolSearch` function.
+Unused deferred definitions stay out of the initial catalog before discovery as well as after it;
+a successful structured ToolSearch result adds their currently declared definitions at that position.
 It never grants tools from reference text or restores revoked definitions. Tools used before
-being discovered remain in the initial catalog. Schemas, strictness and call/result pairing are
+being discovered and explicitly forced undiscovered tools remain in the initial catalog. Schemas, strictness and call/result pairing are
 preserved. Missing metadata, absent/empty configuration, and native Anthropic passthrough keep
 existing behavior. Malformed configuration is rejected on write; load recovery disables only
 this optional setting rather than discarding providers.

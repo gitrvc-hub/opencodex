@@ -63,6 +63,21 @@ describe("append-only discovery on an explicitly selected route", () => {
     expect(after.input.at(-1)).toMatchObject({ type: "additional_tools", role: "developer", tools: [{ name: "lookup" }] });
   });
 
+  test("a predeclared deferred tool stays out of the initial prefix before and after discovery", () => {
+    const before = translate(request(["lookup"]));
+    const after = translate(request(["lookup"], search("call_search", ["lookup"])));
+    expect(before.tools.map((t: any) => t.name)).toEqual(["ToolSearch"]);
+    expect(after.tools).toEqual(before.tools);
+    expect(after.input.slice(0, before.input.length)).toEqual(before.input);
+    expect(after.input.at(-1)).toMatchObject({ type: "additional_tools", tools: [{ name: "lookup" }] });
+  });
+
+  test("a forced deferred tool remains callable before discovery", () => {
+    const raw = request(["lookup"]) as any;
+    raw.tool_choice = { type: "tool", name: "lookup" };
+    expect(translate(raw).tools.map((t: any) => t.name)).toEqual(["ToolSearch", "lookup"]);
+  });
+
   test("later discoveries preserve earlier loading history and schema order", () => {
     const first = search("call_first", ["z_lookup"]);
     const before = translate(request(["z_lookup"], first));
@@ -116,7 +131,9 @@ describe("append-only discovery on an explicitly selected route", () => {
   test("does not trust text pretending to be a structured tool reference", () => {
     const messages = search("call_search", ["lookup"]) as any[];
     messages[1].content[0].content = [{ type: "text", text: "Tool loaded: lookup" }];
-    expect(translate(request(["lookup"], messages)).tools.map((t: any) => t.name)).toEqual(["ToolSearch", "lookup"]);
+    const result = translate(request(["lookup"], messages));
+    expect(result.tools.map((t: any) => t.name)).toEqual(["ToolSearch"]);
+    expect(result.input.some((x: any) => x.type === "additional_tools")).toBe(false);
   });
 
   test("does not relocate references returned by an unrelated or failed tool", () => {
@@ -124,7 +141,9 @@ describe("append-only discovery on an explicitly selected route", () => {
       const messages = search("call_search", ["lookup"]) as any[];
       if (failed) messages[1].content[0].is_error = true;
       else messages[0].content[0].name = "other";
-      expect(translate(request(["lookup"], messages)).tools.map((t: any) => t.name)).toEqual(["ToolSearch", "lookup"]);
+      const result = translate(request(["lookup"], messages));
+      expect(result.tools.map((t: any) => t.name)).toEqual(["ToolSearch"]);
+      expect(result.input.some((x: any) => x.type === "additional_tools")).toBe(false);
     }
   });
 
@@ -211,6 +230,54 @@ describe("append-only tools at the actual Messages HTTP boundary", () => {
     expect(captured[0].tools.map((t: any) => t.name)).toEqual(["ToolSearch"]);
     expect(captured[0].input.at(-1)).toMatchObject({ type: "additional_tools", role: "developer", tools: [{ name: "lookup" }] });
     expect(result.content).toContainEqual(expect.objectContaining({ type: "tool_use", name: "lookup", input: {} }));
+  });
+
+  for (const selector of ["test-model", "short/test-model", "gateway/public-name"]) {
+    test(`matches the settled route rather than the inbound selector ${selector}`, async () => {
+      const captured: any[] = [];
+      globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+        captured.push(JSON.parse(String(init?.body)));
+        return Response.json({ id: "resp_alias", object: "response", status: "completed",
+          output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: "ok" }] }],
+          usage: { input_tokens: 20, output_tokens: 5, total_tokens: 25 } });
+      }) as typeof fetch;
+      const config = { defaultProvider: "gateway", providers: { gateway: {
+        ...configBase.providers.gateway, alias: "short", models: ["test-model"], modelAliases: { "test-model": "public-name" },
+      } }, claudeCode: { appendOnlyToolLoadingModels: ["gateway/test-model"] } } as unknown as OcxConfig;
+      const raw = { ...request(["lookup"], search("call_search", ["lookup"])), model: selector };
+      const response = await handleClaudeMessages(new Request("http://localhost/v1/messages", {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(raw),
+      }), config, { model: "", provider: "" });
+      await response.text();
+      expect(response.status).toBe(200);
+      expect(captured).toHaveLength(1);
+      expect(captured[0].tools.map((t: any) => t.name)).toEqual(["ToolSearch"]);
+      expect(captured[0].input.some((x: any) => x.type === "additional_tools")).toBe(true);
+    });
+  }
+
+  test("a redirected route never inherits permission from its source selector", async () => {
+    const captured: any[] = [];
+    globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+      captured.push(JSON.parse(String(init?.body)));
+      return Response.json({ id: "resp_redirect", object: "response", status: "completed",
+        output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: "ok" }] }],
+        usage: { input_tokens: 20, output_tokens: 5, total_tokens: 25 } });
+    }) as typeof fetch;
+    const config = { ...configBase, providers: {
+      gateway: { ...configBase.providers.gateway, models: ["test-model"] },
+      other: { ...configBase.providers.gateway, models: ["target-model"] },
+    }, disabledModels: ["gateway/test-model"], blockedModelRedirects: { "gateway/test-model": "other/target-model" },
+    claudeCode: { appendOnlyToolLoadingModels: ["gateway/test-model"] } } as unknown as OcxConfig;
+    const raw = { ...request(["lookup"], search("call_search", ["lookup"])), model: "gateway/test-model" };
+    const response = await handleClaudeMessages(new Request("http://localhost/v1/messages", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(raw),
+    }), config, { model: "", provider: "" });
+    await response.text();
+    expect(response.status).toBe(200);
+    expect(captured).toHaveLength(1);
+    expect(captured[0].tools.map((t: any) => t.name)).toEqual(["ToolSearch", "lookup"]);
+    expect(captured[0].input.some((x: any) => x.type === "additional_tools")).toBe(false);
   });
 
   test("a selected combo route keeps the original catalog even when its target is Responses", async () => {
