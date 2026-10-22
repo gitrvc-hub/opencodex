@@ -236,6 +236,25 @@ describe("append-only tools at the actual Messages HTTP boundary", () => {
     });
   }
 
+  test("physical projection preserves an explicitly forced undiscovered tool", async () => {
+    const captured: any[] = [];
+    globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+      captured.push(JSON.parse(String(init?.body)));
+      return Response.json({ id: "resp_forced", object: "response", status: "completed",
+        output: [{ type: "function_call", id: "fc_forced", call_id: "call_forced", name: "lookup", arguments: "{}" }],
+        usage: { input_tokens: 20, output_tokens: 5, total_tokens: 25 } });
+    }) as typeof fetch;
+    const raw = { ...request(["lookup"]), tool_choice: { type: "tool", name: "lookup" } };
+    const response = await handleClaudeMessages(new Request("http://localhost/v1/messages", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(raw),
+    }), { ...configBase, claudeCode: enabled } as OcxConfig, { model: "", provider: "" });
+    await response.text();
+    expect(response.status).toBe(200);
+    expect(captured).toHaveLength(1);
+    expect(captured[0].tools.map((t: any) => t.name)).toEqual(["ToolSearch", "lookup"]);
+    expect(captured[0].tool_choice).toEqual({ type: "function", name: "lookup" });
+  });
+
   for (const selector of ["test-model", "short/test-model", "gateway/public-name"]) {
     test(`matches the settled route rather than the inbound selector ${selector}`, async () => {
       const captured: any[] = [];
