@@ -966,7 +966,7 @@ The proxy translates every Anthropic Messages API request into the Codex Respons
 | Assistant text | `output_text` |
 | Assistant `tool_use` | `function_call` (`input` → JSON-stringified `arguments`) |
 | User `tool_result` | `function_call_output` (`is_error` → `[tool error]` prefix) |
-| `tool_reference` in a tool result | Text `Tool loaded: <tool_name>` in the paired result; preserves loaded-tool names without adding declarations or enabling translated server-side deferral |
+| `tool_reference` in a tool result | Text `Tool loaded: <tool_name>` in the paired result by default. The [append-only opt-in](#preserve-cache-prefixes-when-client-tools-load) may place a currently declared deferred function at its successful client discovery result on an eligible final Responses route; a reference alone never grants a tool or enables server-side search |
 | `thinking` / `redacted_thinking` replay | `reasoning` items with bounded `ocxr1` envelopes for signatures and redacted payloads |
 | Function tools | `{type: "function"}` (`web_search*` → `{type: "web_search"}`). On a route to `api.anthropic.com`, the typed `web_search_*` and `web_fetch_*` declarations are also sent to Anthropic as declared and run server-side, unless the web-search sidecar supplies `web_search` itself. A search or fetch with a matching call and complete input comes back to the client as its `server_tool_use` block and its `web_search_tool_result` or `web_fetch_tool_result`, verbatim. Orphan results are dropped without synthesizing a call, while the surrounding text is preserved. When the client sends a complete pair back in its history, the next `api.anthropic.com` request carries it in place only if the following block uniquely identifies its original turn. Repeated anchors, unmatched or duplicate call/result ids, malformed call input, or a result appearing before its call drop the exchange. Call input must be an object with a nonempty search query or fetch URL string; other destinations never see the exchange |
 | `tool_choice` | `auto`→`auto`, `none`→`none`, `any`→`required`, named function→`{type:"function",name}`, hosted WebSearch/web_search→`{type:"web_search"}` |
@@ -1134,15 +1134,22 @@ configured, every tool schema is inlined before you type anything. Re-enable def
 { "claudeCode": { "toolSearch": true } }
 ```
 
-This is off by default because it only pays off on **native Anthropic passthrough** routes.
-Deferral is a server-side optimisation, not a smaller request: Claude Code still sends every
-tool definition, and Anthropic's API is what keeps deferred schemas out of the model's context
-and answers the `tool_search` server tool with `tool_reference` blocks. A translated (routed)
-model never reaches that machinery — opencodex drops the `tool_search` tool and ignores
-`defer_loading` — so the provider still receives every schema while Claude Code stops counting
-them and therefore stops compacting. With `claudeCode.compatibility: "enforce"` the same
-request is rejected with 400 instead. Turn it on when `ocx claude` is routed to an Anthropic
-model; leave it off for third-party routes until translated deferral is supported.
+This remains off by default. **Native Anthropic passthrough** preserves Anthropic's server-side
+tool search: the client still sends deferred definitions, and Anthropic keeps them out of the
+model context until discovery. The default translated path does not implement that server tool;
+it drops the typed search declaration and ordinarily sends function schemas eagerly, which can
+make the client's context accounting undercount the provider's input.
+
+There is a separate, narrow exception for **client-executed `ToolSearch`** on a verified Responses
+destination selected by [`claudeCode.appendOnlyToolLoadingModels`](#preserve-cache-prefixes-when-client-tools-load).
+For that final physical route, the opt-in keeps unused deferred definitions out of the initial
+catalog and adds current definitions at successful structured discovery results. Client-side
+search must already work and an eager `ToolSearch` function must be declared. The launcher
+`toolSearch` setting can enable client discovery where the client supports it, but does not by
+itself activate the opt-in or provide server-side search. Verify this client-and-gateway combination
+before enabling it; leave it off on other third-party routes. Compatibility-enforcement admission
+is unchanged and can still reject unsupported deferral requests. Neither setting guarantees
+cache hits or full native-tool-search parity.
 
 Accepted values follow Claude Code's own parser: `true`, `"auto"`, `"auto:N"` (N at least 100)
 and `"force"`. A value you export yourself always wins over the injected one.
@@ -1184,8 +1191,11 @@ catalog:
 Selectors match resolved `provider/model` names, not picker aliases. A single trailing wildcard
 such as `my-gateway/gpt-*` selects a verified model family; a global `*` is not accepted. The
 list defaults to off, with a maximum of 128 entries of 512 characters each. Only a request whose
-final route is a direct Responses provider is rewritten; a combo or policy route keeps the original
-tool catalog even when selected, because its fallbacks may not keep the chronological placement.
+final physical route is a direct Responses provider gets the outbound rewrite. The destination
+is checked again when the adapter is bound after a late subagent fallback or replacement; selecting
+the original route does not authorize a different fallback. The request's original catalog remains
+available to other attempts. A combo or policy request keeps the original catalog even when
+selected, because its fallbacks may not keep the chronological placement.
 
 The optimization needs a string `metadata.user_id` and an eager declared `ToolSearch` function.
 Unused deferred definitions stay out of the initial catalog before discovery as well as after it;

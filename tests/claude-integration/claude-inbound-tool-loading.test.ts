@@ -12,6 +12,7 @@ import { appendLoadedToolDefinitions, appendOnlyToolLoadingMatches } from "../..
 import { parseRequest } from "../../src/responses/parser";
 import { configSchema } from "../../src/config/schema/config-schema";
 import { salvageConfigCandidate } from "../../src/config/salvage";
+import { noteSubagentModelFailure, resetSubagentModelFallbackStateForTests } from "../../src/codex/subagent-model-fallback";
 
 const model = "gateway/gpt-test";
 const enabled = { appendOnlyToolLoadingModels: [model] };
@@ -22,8 +23,8 @@ const search = (id: string, names: string[]) => [
   { role: "user", content: [{ type: "tool_result", tool_use_id: id, content: names.map(tool_name => ({ type: "tool_reference", tool_name })) }] },
 ];
 const request = (names: string[], messages: unknown[] = []) => ({ model, metadata: { user_id: "synthetic-cache-test" }, system: "Synthetic test instructions", tools: [tool("ToolSearch"), ...names.map(n => tool(n, true))], messages: [{ role: "user", content: "Use the available tools." }, ...messages], max_tokens: 100 });
-// Mirrors the handler's gate for a settled direct Responses route; the HTTP tests below cover the
-// real routing decision, including the combo refusal.
+// Exercise the pure projection with metadata/selector prerequisites. The HTTP tests below cover
+// the actual physical-adapter decision, late fallback, and combo refusal.
 const translate = (raw: ReturnType<typeof request>, config: any = enabled) => {
   const { body, cacheKeySource } = anthropicToResponsesTranslation(raw, config);
   const selected = cacheKeySource === "metadata" && appendOnlyToolLoadingMatches(config?.appendOnlyToolLoadingModels, body.model as string);
@@ -201,6 +202,7 @@ describe("append-only tools at the actual Messages HTTP boundary", () => {
     release = acquireOwnedSpendHome();
   });
   afterEach(() => {
+    resetSubagentModelFallbackStateForTests();
     release?.();
     globalThis.fetch = originalFetch;
     isolated?.restore();
@@ -209,28 +211,30 @@ describe("append-only tools at the actual Messages HTTP boundary", () => {
     removeTreeWithRetry(home);
   });
 
-  test("the Responses wire retains chronological definitions and returns the discovered call", async () => {
-    const captured: any[] = [];
-    globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
-      expect(String(url)).toBe("https://example.com/v1/responses");
-      captured.push(JSON.parse(String(init?.body)));
-      return Response.json({ id: "resp_tool_loading", object: "response", status: "completed",
-        output: [{ type: "function_call", id: "fc_lookup", call_id: "call_lookup", name: "lookup", arguments: "{}" }],
-        usage: { input_tokens: 20, output_tokens: 5, total_tokens: 25 } });
-    }) as typeof fetch;
-    const config = { ...configBase, claudeCode: enabled } as OcxConfig;
-    const raw = request(["lookup"], search("call_search", ["lookup"]));
-    const response = await handleClaudeMessages(new Request("http://localhost/v1/messages", {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ ...raw, stream: false }),
-    }), config, { model: "", provider: "" });
-    const result = await response.json() as any;
-    expect(response.status).toBe(200);
-    expect(captured).toHaveLength(1);
-    expect(captured[0].tools.map((t: any) => t.name)).toEqual(["ToolSearch"]);
-    expect(captured[0].input.at(-1)).toMatchObject({ type: "additional_tools", role: "developer", tools: [{ name: "lookup" }] });
-    expect(result.content).toContainEqual(expect.objectContaining({ type: "tool_use", name: "lookup", input: {} }));
-  });
+  for (const authMode of ["key", "forward"] as const) {
+    test(`the ${authMode} Responses wire retains chronological definitions and returns the discovered call`, async () => {
+      const captured: any[] = [];
+      globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
+        expect(String(url)).toBe("https://example.com/v1/responses");
+        captured.push(JSON.parse(String(init?.body)));
+        return Response.json({ id: "resp_tool_loading", object: "response", status: "completed",
+          output: [{ type: "function_call", id: "fc_lookup", call_id: "call_lookup", name: "lookup", arguments: "{}" }],
+          usage: { input_tokens: 20, output_tokens: 5, total_tokens: 25 } });
+      }) as typeof fetch;
+      const config = { ...configBase, providers: { gateway: { ...configBase.providers.gateway, authMode } }, claudeCode: enabled } as OcxConfig;
+      const raw = request(["lookup"], search("call_search", ["lookup"]));
+      const response = await handleClaudeMessages(new Request("http://localhost/v1/messages", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...raw, stream: false }),
+      }), config, { model: "", provider: "" });
+      const result = await response.json() as any;
+      expect(response.status).toBe(200);
+      expect(captured).toHaveLength(1);
+      expect(captured[0].tools.map((t: any) => t.name)).toEqual(["ToolSearch"]);
+      expect(captured[0].input.at(-1)).toMatchObject({ type: "additional_tools", role: "developer", tools: [{ name: "lookup" }] });
+      expect(result.content).toContainEqual(expect.objectContaining({ type: "tool_use", name: "lookup", input: {} }));
+    });
+  }
 
   for (const selector of ["test-model", "short/test-model", "gateway/public-name"]) {
     test(`matches the settled route rather than the inbound selector ${selector}`, async () => {
@@ -278,6 +282,74 @@ describe("append-only tools at the actual Messages HTTP boundary", () => {
     expect(captured).toHaveLength(1);
     expect(captured[0].tools.map((t: any) => t.name)).toEqual(["ToolSearch", "lookup"]);
     expect(captured[0].input.some((x: any) => x.type === "additional_tools")).toBe(false);
+  });
+
+  for (const selected of ["primary/test-model", "fallback/test-model"]) {
+    test(`late subagent fallback honors only the physical opt-in ${selected}`, async () => {
+      resetSubagentModelFallbackStateForTests();
+      const captured: any[] = [];
+      globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
+        expect(String(url)).toBe("https://fallback.example/v1/responses");
+        captured.push(JSON.parse(String(init?.body)));
+        return Response.json({ id: "resp_late_fallback", object: "response", status: "completed",
+          output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: "ok" }] }],
+          usage: { input_tokens: 20, output_tokens: 5, total_tokens: 25 } });
+      }) as typeof fetch;
+      const config = {
+        defaultProvider: "primary", providers: {
+          primary: { ...configBase.providers.gateway, baseUrl: "https://primary.example/v1", models: ["test-model"] },
+          fallback: { ...configBase.providers.gateway, baseUrl: "https://fallback.example/v1", models: ["test-model"] },
+        }, subagentModelFallback: ["fallback/test-model"],
+        claudeCode: { appendOnlyToolLoadingModels: [selected] },
+      } as unknown as OcxConfig;
+      noteSubagentModelFailure("primary/test-model", "429", config);
+      const raw = { ...request(["lookup"], search("call_search", ["lookup"])), model: "primary/test-model" };
+      const log = { model: "", provider: "" };
+      const response = await handleClaudeMessages(new Request("http://localhost/v1/messages", {
+        method: "POST", headers: { "content-type": "application/json", "x-openai-subagent": "collab_spawn" },
+        body: JSON.stringify(raw),
+      }), config, log);
+      await response.text();
+      expect(response.status).toBe(200);
+      expect(log).toMatchObject({ subagentModelFallbackFrom: "primary/test-model", subagentModelFallbackTo: "fallback/test-model" });
+      expect(captured).toHaveLength(1);
+      const shouldAppend = selected === "fallback/test-model";
+      expect(captured[0].tools.map((t: any) => t.name)).toEqual(shouldAppend ? ["ToolSearch"] : ["ToolSearch", "lookup"]);
+      expect(captured[0].input.some((x: any) => x.type === "additional_tools")).toBe(shouldAppend);
+    });
+  }
+
+  test("late fallback to Chat retains the complete original catalog", async () => {
+    resetSubagentModelFallbackStateForTests();
+    const captured: any[] = [];
+    globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(url)).toBe("https://fallback.example/v1/chat/completions");
+      captured.push(JSON.parse(String(init?.body)));
+      const chunk = { id: "chat_fallback", object: "chat.completion.chunk", model: "test-model",
+        choices: [{ index: 0, delta: { role: "assistant", content: "ok" }, finish_reason: "stop" }] };
+      return new Response(`data: ${JSON.stringify(chunk)}\n\ndata: [DONE]\n\n`, {
+        headers: { "content-type": "text/event-stream" },
+      });
+    }) as typeof fetch;
+    const config = {
+      defaultProvider: "primary", providers: {
+        primary: { ...configBase.providers.gateway, baseUrl: "https://primary.example/v1", models: ["test-model"] },
+        fallback: { ...configBase.providers.gateway, adapter: "openai-chat", baseUrl: "https://fallback.example/v1", models: ["test-model"] },
+      }, subagentModelFallback: ["fallback/test-model"],
+      claudeCode: { appendOnlyToolLoadingModels: ["primary/test-model", "fallback/test-model"] },
+    } as unknown as OcxConfig;
+    noteSubagentModelFailure("primary/test-model", "429", config);
+    const raw = { ...request(["lookup"]), model: "primary/test-model" };
+    const log = { model: "", provider: "" };
+    const response = await handleClaudeMessages(new Request("http://localhost/v1/messages", {
+      method: "POST", headers: { "content-type": "application/json", "x-openai-subagent": "collab_spawn" },
+      body: JSON.stringify(raw),
+    }), config, log);
+    await response.text();
+    expect(response.status).toBe(200);
+    expect(log).toMatchObject({ subagentModelFallbackTo: "fallback/test-model" });
+    expect(captured).toHaveLength(1);
+    expect(captured[0].tools.map((t: any) => t.function.name)).toEqual(["ToolSearch", "lookup"]);
   });
 
   test("a selected combo route keeps the original catalog even when its target is Responses", async () => {
