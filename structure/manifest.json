@@ -513,7 +513,11 @@
         "src/combos/",
         "src/server/",
         "src/usage/",
-        "src/lib/decision-quota-sink.ts"
+        "src/lib/decision-quota-sink.ts",
+        "src/providers/antigravity-quota-identity.ts",
+        "src/providers/quota-decision-antigravity.ts",
+        "src/providers/quota-decision-snapshot.ts",
+        "src/providers/quota-decision-publication.ts"
       ]
     },
     {
@@ -526,6 +530,21 @@
         "src/providers/anthropic-billing-ownership.ts",
         "src/providers/anthropic-billing-recovery.ts",
         "src/providers/request-pacing.ts"
+      ]
+    },
+    {
+      "path": "providers/workbuddy.md",
+      "tier": 4,
+      "title": "WorkBuddy AI Subscription",
+      "scope": "Browser login, account-bound refresh and catalogs, fixed-origin Chat transport, tool continuity and display-only credit balances.",
+      "documents": [
+        "src/oauth/workbuddy.ts",
+        "src/providers/workbuddy.ts",
+        "src/providers/workbuddy-models.ts",
+        "src/providers/workbuddy-credit-balance.ts",
+        "src/providers/quota/workbuddy.ts",
+        "src/adapters/workbuddy.ts",
+        "src/adapters/workbuddy-schema.ts"
       ]
     },
     {
@@ -566,7 +585,8 @@
       "title": "OpenAI Provider Account Modes",
       "scope": "Pool/Direct account modes, API-key separation, and the public provider and quota contract.",
       "documents": [
-        "src/codex/"
+        "src/codex/",
+        "src/providers/codex-capacity.ts"
       ]
     },
     {
