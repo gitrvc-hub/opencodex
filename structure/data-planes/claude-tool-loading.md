@@ -19,6 +19,12 @@ plain-text markers and unrelated calls cannot authorize additions; ambiguous IDs
 the original translation. Schemas and strictness remain unchanged. Compaction, schema changes
 and revocation may legitimately invalidate the prefix.
 
+Known destinations that flatten or reject `additional_tools` keep the original complete catalog:
+OpenCode Go's Responses endpoint and the official xAI Responses hosts are excluded
+even when selected. Promoting discoveries into initial tools defeats chronological prefix stability.
+Provider-ID migration in `src/providers/provider-id-rewrite.ts` carries both exact and wildcard
+selectors to the replacement provider without changing the selected model suffix.
+
 The list defaults to absent/off, accepts provider-qualified exact routes or a single trailing
 prefix wildcard, and must name only direct Responses destinations verified to support
 `additional_tools`. A selected combo or policy route keeps the original catalog, because it can
@@ -28,6 +34,8 @@ load salvage drops only this optional setting, preserving providers and other cl
 `tests/claude-integration/claude-inbound-tool-loading.test.ts` covers the real Responses parser,
 prefix stability, authorization boundaries, configuration salvage, and real late subagent fallback
 in both opt-in directions, including a fallback onto Chat that retains every original tool.
+`tests/claude-integration/claude-tool-loading-destinations.test.ts` covers excluded physical
+destinations, an ordinary gateway positive control and provider-ID selector migration.
 
 This opt-in does not stabilize Claude models routed through a Responses gateway that lifts
 `additional_tools` into Claude's top-level tools. For those, the documented operator path is a

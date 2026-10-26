@@ -723,6 +723,8 @@ Anthropic 백엔드를 명시하면 의도적으로 실패 후 중단해요.
 
 예외적으로, 클라이언트가 직접 실행하는 eager `ToolSearch` 함수와 구조화된 검색 결과를 제공하고 최종 Responses 목적지가 `additional_tools`를 지원한다면 `claudeCode.appendOnlyToolLoadingModels`로 그 목적지를 명시하여 사용할 수 있습니다. 이 옵션은 사용하지 않은 지연 정의를 초기 카탈로그에서 제외하고 성공한 검색 위치에 현재 정의를 배치합니다. 런처의 `toolSearch` 설정만으로 이 동작이나 서버 측 검색이 활성화되지는 않습니다. 지원되는 클라이언트와 게이트웨이 조합에서만 켜고, 그 밖의 타사 경로에서는 꺼 두세요. 기존 compatibility-enforcement 검사는 그대로 적용되므로 지원하지 않는 요청을 거절할 수 있습니다. 캐시 적중이나 네이티브 검색과의 완전한 동등성은 보장하지 않습니다. [영문 설정 안내](/guides/claude-code/#preserve-cache-prefixes-when-client-tools-load)를 참고하세요.
 
+OpenCode Go의 Responses 엔드포인트와 공식 xAI Responses 호스트는 선택 목록에 있어도 원래 전체 도구 카탈로그를 유지합니다. 이 목적지들은 `additional_tools`를 초기 `tools`로 승격하거나 거절하므로 시간순 로딩 prefix를 보존할 수 없습니다. 검색 결과의 정의를 초기 `tools`로 승격하는 다른 게이트웨이에서도 이 옵션을 꺼 두세요.
+
 **서브에이전트가 잘못된 모델로 디스패치됨** — 로스터 에이전트(`ocx-*`)는 Agent 도구의 `model`
 인자가 아니라 `<!-- ocx-route: ... -->` 지시문을 사용해요. 지시문이 원하는 라우트와 일치하는지
 확인하고, 모델 자리 표시자로 `"haiku"`를 전달하세요.

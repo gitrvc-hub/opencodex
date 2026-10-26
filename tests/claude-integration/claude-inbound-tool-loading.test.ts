@@ -382,7 +382,7 @@ describe("append-only tools at the actual Messages HTTP boundary", () => {
     const config = {
       ...configBase,
       combos: { pick: { strategy: "failover", targets: [{ provider: "gateway", model: "gpt-test" }] } },
-      claudeCode: { appendOnlyToolLoadingModels: ["combo/pick"] },
+      claudeCode: { appendOnlyToolLoadingModels: ["combo/pick", "gateway/gpt-test"] },
     } as unknown as OcxConfig;
     const raw = { ...request(["lookup"], search("call_search", ["lookup"])), model: "combo/pick" };
     const response = await handleClaudeMessages(new Request("http://localhost/v1/messages", {

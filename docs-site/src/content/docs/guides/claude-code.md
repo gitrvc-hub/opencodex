@@ -1197,6 +1197,11 @@ the original route does not authorize a different fallback. The request's origin
 available to other attempts. A combo or policy request keeps the original catalog even when
 selected, because its fallbacks may not keep the chronological placement.
 
+OpenCode Go's Responses endpoint and the official xAI Responses hosts keep the
+original complete tool catalog even when selected. These destinations flatten or reject
+`additional_tools`, so they cannot preserve this chronological loading prefix. Keep this opt-in
+off for any other gateway that promotes discoveries to top-level `tools`.
+
 The optimization needs a string `metadata.user_id` and an eager declared `ToolSearch` function.
 Unused deferred definitions stay out of the initial catalog before discovery as well as after it;
 a successful structured ToolSearch result adds their currently declared definitions at that position.
